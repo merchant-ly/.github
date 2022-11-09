@@ -1,0 +1,93 @@
+name: Setup Dependencies
+
+# Description:
+# Install Elixir and Erlang from `.tool-versions` and compile project dependencies and dialyzer PLTs
+#
+# NOTES:
+# - Reusable workflows have no description tag, hence this comment section
+# - An external action is used 'marocchino/tool-versions-action' and pinned to a commit SHA for security
+# - You can't call a reusable workflow (such as this) from another reusable workflow
+
+on:
+  workflow_call:
+    inputs:
+      action-cache-version:
+        type: string
+        description: Setting to a new string will bust the Elixir dependency cache.  Useful if CI gets into a non-working state due to cached files.
+        required: false
+        default: 'v1'
+      runs-on:
+        type: string
+        required: false
+        default: 'ubuntu-latest'
+
+    outputs:
+      otp-version:
+        value: ${{ jobs.setup.outputs.otp-version }}
+      elixir-version:
+        value: ${{ jobs.setup.outputs.elixir-version }}
+      node-version:
+        value: ${{ jobs.setup.outputs.node-version }}
+      cache-key:
+        value: ${{ jobs.setup.outputs.cache-key }}
+      cache-path:
+        value: ${{ jobs.setup.outputs.cache-path }}
+
+env:
+  cache-path: |
+    deps
+    _build
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ${{ inputs.runs-on }}
+    env:
+      MIX_ENV: test
+    outputs:
+      cache-path: ${{ env.cache-path }}
+      cache-key: ${{ steps.elixir-cache.outputs.key }}
+      otp-version: ${{ steps.tool-versions.outputs.erlang }}
+      elixir-version: ${{ steps.tool-versions.outputs.elixir }}
+      node-version: ${{ steps.tool-versions.outputs.nodejs }}
+
+    steps:
+      - name: Checkout Github repo
+        uses: actions/checkout@v3
+
+      - name: Read .tool-versions
+        uses: marocchino/tool-versions-action@608d0ecb8f01e467223f0a854ead7d3fc784b540
+        id: tool-versions
+
+      - name: Setup Elixir
+        id: setup-deps
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ steps.tool-versions.outputs.elixir }}
+          otp-version: ${{ steps.tool-versions.outputs.erlang }}
+
+      - name: Output cache key
+        id: elixir-cache
+        # Note the cache key uses the output of erlef/setup-beam@v1, not the value from .tool-versions
+        run: echo "key=${{ runner.os }}-elixir-${{ inputs.action-cache-version }}-otp-${{ steps.setup-deps.outputs.otp-version }}-elixir-${{ steps.setup-deps.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}" >> $GITHUB_OUTPUT
+
+      - name: Restore cached deps
+        uses: actions/cache@v3
+        id: cached-deps
+        with:
+          path: ${{ env.cache-path }}
+          key: ${{ steps.elixir-cache.outputs.key }}
+        # Note no restore-keys defined to avoid possible stale cache problems
+
+      - name: Install deps
+        if: steps.cached-deps.outputs.cache-hit != 'true'
+        run: |
+          mix local.rebar --force
+          mix local.hex --force
+          mix deps.get --only test
+
+      - name: Build deps/PLT
+        if: steps.cached-deps.outputs.cache-hit != 'true'
+        run: |
+          mix deps.compile
+          mix dialyzer --plt
