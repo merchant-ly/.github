@@ -16,6 +16,11 @@ on:
         description: Setting to a new string will bust the Elixir dependency cache.  Useful if CI gets into a non-working state due to cached files.
         required: false
         default: 'v1'
+      build-plt:
+        type: boolean
+        description: Setting false will skip building the PLT (for use of this workflow in releases)
+        required: false
+        default: true
       runs-on:
         type: string
         required: false
@@ -86,8 +91,10 @@ jobs:
           mix local.hex --force
           mix deps.get
 
-      - name: Build deps/PLT
+      - name: Build deps
         if: steps.cached-deps.outputs.cache-hit != 'true'
-        run: |
-          mix deps.compile
-          mix dialyzer --plt
+        run: mix deps.compile
+
+      - name: Build PLT
+        if: inputs.build-plt && steps.cached-deps.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
