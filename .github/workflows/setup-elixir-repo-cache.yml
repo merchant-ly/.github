@@ -39,6 +39,7 @@ on:
         value: ${{ jobs.setup.outputs.cache-path }}
 
 env:
+  ImageOS: ubuntu22
   cache-path: |
     deps
     _build
