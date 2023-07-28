@@ -13,18 +13,23 @@ on:
     inputs:
       action-cache-version:
         type: string
+        default: 'v1'
         description: Setting to a new string will bust the Elixir dependency cache.  Useful if CI gets into a non-working state due to cached files.
         required: false
-        default: 'v1'
       build-plt:
         type: boolean
+        default: true
         description: Setting false will skip building the PLT (for use of this workflow in releases)
         required: false
-        default: true
       runs-on:
         type: string
-        required: false
         default: 'ubuntu-latest'
+        required: false
+      compile:
+        type: boolean
+        default: false
+        description: Setting true will compile the code with warnings as errors and cache it
+        required: false
 
     outputs:
       otp-version:
@@ -48,6 +53,7 @@ jobs:
   setup:
     name: Setup
     runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 25
     env:
       MIX_ENV: test
     outputs:
@@ -94,8 +100,13 @@ jobs:
 
       - name: Build deps
         if: steps.cached-deps.outputs.cache-hit != 'true'
-        run: mix deps.compile
+        run: mix deps.compile --skip-umbrella-children
+
+      - name: Compile with warnings as errors
+        if: inputs.compile
+        run: mix compile --warnings-as-errors
 
       - name: Build PLT
         if: inputs.build-plt && steps.cached-deps.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
+
