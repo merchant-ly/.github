@@ -70,8 +70,8 @@ jobs:
         id: setup-deps
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: ${{ steps.tool-versions.outputs.elixir }}
-          otp-version: ${{ steps.tool-versions.outputs.erlang }}
+          elixir-version: '${{ steps.tool-versions.outputs.elixir }}'
+          otp-version: '${{ steps.tool-versions.outputs.erlang }}'
 
       - name: Output cache key
         id: elixir-cache
