@@ -25,8 +25,9 @@ runs:
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: ${{ inputs.elixir-version }}
-        otp-version: ${{ inputs.otp-version }}
+        version-type: strict
+        elixir-version: '${{ inputs.elixir-version }}'
+        otp-version: '${{ inputs.otp-version }}'
 
     - name: Restore cached deps
       uses: actions/cache@v3
