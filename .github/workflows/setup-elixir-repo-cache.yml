@@ -70,6 +70,7 @@ jobs:
         id: setup-deps
         uses: erlef/setup-beam@v1
         with:
+          version-type: strict
           elixir-version: '${{ steps.tool-versions.outputs.elixir }}'
           otp-version: '${{ steps.tool-versions.outputs.erlang }}'
 
