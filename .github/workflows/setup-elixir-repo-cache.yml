@@ -25,11 +25,6 @@ on:
         type: string
         default: 'ubuntu-latest'
         required: false
-      compile:
-        type: boolean
-        default: false
-        description: Setting true will compile the code with warnings as errors and cache it
-        required: false
 
     outputs:
       otp-version:
@@ -101,10 +96,6 @@ jobs:
       - name: Build deps
         if: steps.cached-deps.outputs.cache-hit != 'true'
         run: mix deps.compile --skip-umbrella-children
-
-      - name: Compile with warnings as errors
-        if: inputs.compile
-        run: mix compile --warnings-as-errors
 
       - name: Build PLT
         if: inputs.build-plt && steps.cached-deps.outputs.cache-hit != 'true'
