@@ -1,0 +1,71 @@
+name: Build Playwright Image
+
+on:
+  workflow_call:
+    inputs:
+      reset:
+        description: 'Reset cache'
+        default: 'none'
+        type: string
+
+    secrets:
+      SEVEN_INTERNET_REPO_DEPLOY_KEY:
+        required: true
+
+jobs:
+  release:
+    name: Assemble Releases
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.container }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+    env: 
+      SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+    
+    steps:
+      - name: Checkout Github repo
+        uses: actions/checkout@v3
+
+      - name: Setup Earthly
+        uses: earthly/actions-setup@v1
+        with:
+          github-token: ${{ github.token }}
+          version: ^0.7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Setup ssh-agent for earthly's GIT CLONE
+        run: |
+          echo $SSH_AUTH_SOCK
+          mkdir ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.SEVEN_INTERNET_REPO_DEPLOY_KEY }}"
+
+      - name: Maybe prune build context
+        if: inputs.reset == 'prune'
+        run: earthly prune
+
+      - name: Build and push image
+        run: >
+          earthly
+          --ci
+          --build-arg NODE_OPTIONS=--openssl-legacy-provider
+          --push
+          +github-action-pw-image
+
+      - name: Delete old packages
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: github-action-playwright
+          package-type: container
+          # Min version 0 and delete untagged should leave only the 'latest'
+          min-versions-to-keep: 0
+          delete-only-untagged-versions: true

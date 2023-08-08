@@ -1,0 +1,83 @@
+name: Set CI Config
+
+description: Composite action to gather config used by Merchantly Elixir apps in CI
+
+inputs:
+  version:
+    description: Hashed input for keying the cache
+    required: true
+  cache-path:
+    description: Cache path for building Elixir app
+    default: |
+      deps
+      _build
+    required: false
+
+outputs:
+  config:
+    description: Managed JSON string of CI config
+    value: ${{ steps.config.output.value }}
+  otp-version:
+    description: OTP version
+    value: ${{ steps.versions.outputs.otp }}
+  elixir-version:
+    description: Elixir version
+    value: ${{ steps.versions.outputs.elixir }}
+  node-version:
+    description: Node version
+    value: ${{ steps.versions.outputs.nodejs }}
+  cache-key:
+    description: Key for actions/cache@v3
+    value: ${{ steps.cache.outputs.key }}
+  cache-path:
+    description: Path for actions/cache@v3
+    value: ${{ steps.cache.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    
+    - name: Read .tool-versions
+      uses: marocchino/tool-versions-action@608d0ecb8f01e467223f0a854ead7d3fc784b540
+      id: tool-versions
+
+    - name: Set version config
+      shell: bash
+      id: versions
+      run: |
+        {
+          echo "node=${{ steps.tool-versions.outputs.nodejs }}"
+          echo "elixir=${{ steps.tool-versions.outputs.elixir }}"
+          echo "otp=${{ steps.tool-versions.outputs.erlang }}" 
+        } >> $GITHUB_OUTPUT
+
+    - name: Set cache config
+      id: cache
+      shell: bash      
+      # Note the cache key uses the output of erlef/setup-beam@v1, not the value from .tool-versions
+      run: |
+        echo "path=${{ toJSON(inputs.cache-path) }}" >> $GITHUB_OUTPUT
+        echo "${{ fromJSON(steps.cache.outputs.path)" }}"
+        echo "key=${{ runner.os }}-otp-${{ steps.versions.outputs.otp }}-elixir-${{ steps.versions.outputs.elixir }}-hash-${{ inputs.version }}" >> $GITHUB_OUTPUT
+        cat $GITHUB_OUTPUT
+
+    - name: Build config
+      id: config
+      shell: bash
+      run: >
+        echo "value=$(jq
+        --null-input
+        --arg cache-key "${{ steps.cache.outputs.key }}"
+        --arg cache-path "${{ steps.cache.outputs.path }}"
+        --arg elixir-version "${{ steps.versions.outputs.elixir }}"
+        --arg node-version "${{ steps.versions.outputs.node }}"
+        --arg otp-version "${{ steps.versions.outputs.otp }}"
+        '{
+        "cache-key": $cache-key,
+        "cache-path": $cache-path,
+        "elixir-version": $elixir-version,
+        "node-version": $node-version,
+        "otp-version": $otp-version
+        }'
+        )" >> $GITHUB_OUTPUT
+

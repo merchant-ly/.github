@@ -3,17 +3,8 @@ name: Load Cached Elixir Repo
 description: Composite action to setup erlang/elixir and to load the cached repo with compiled dependencies.
 
 inputs:
-  elixir-version:
-    description: 'Elixir version'
-    required: true
-  otp-version:
-    description: 'Erlang version'
-    required: true
-  cache-path:
-    description: 'Cache path'
-    required: true
-  cache-key:
-    description: 'Cache key'
+  config:
+    description: Managed JSON string of CI config
     required: true
 
 runs:
@@ -22,15 +13,21 @@ runs:
     - name: Checkout Github repo
       uses: actions/checkout@v3
 
+    - name: Get Config
+      uses: merchant-ly/.github/.github/actions/get-config@dev
+      id: config
+      with:
+        config: ${{ inputs.config }}
+
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
         version-type: strict
-        elixir-version: '${{ inputs.elixir-version }}'
-        otp-version: '${{ inputs.otp-version }}'
+        elixir-version: '${{ steps.config.output.elixir-version }}'
+        otp-version: '${{ steps.config.output.otp-version }}'
 
     - name: Restore cached deps
       uses: actions/cache@v3
       with:
-        path: ${{ inputs.cache-path }}
-        key: ${{ inputs.cache-key }}
+        path: ${{ steps.config.output.cache-path }}
+        key: ${{ steps.config.output.cache-key }}

@@ -1,0 +1,123 @@
+name: Run Playwright Tests
+
+on:
+  workflow_call:
+    inputs:
+      container:
+        type: string
+        required: true
+      config:
+        type: string
+        required: true
+
+    secrets:
+      NYDJ_SHOPIFY_THEME_REPO_DEPLOY_KEY:
+        required: true
+      PAYPAL_CLIENT_ID:
+        required: true
+      SHIP_ENGINE_SECRET_KEY_BASE:
+        required: true
+      STRIPE_API_KEY:
+        required: true
+      STRIPE_CONNECT_NYDJ_ACCOUNT_ID:
+        required: true
+      STRIPE_PUBLISHABLE_KEY:
+        required: true
+  
+jobs:
+  playwright:
+    name: 'Playwright Tests'
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.container }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+    timeout-minutes: 8
+    env:
+      ACCEPTANCE_TEST_PATH: /playwright/acceptance_test
+      DEBUG: pw:api
+      NYDJ_SHOPIFY_THEME_REPO_DEPLOY_KEY: ${{ secrets.NYDJ_SHOPIFY_THEME_REPO_DEPLOY_KEY }}
+      PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+      PLAYWRIGHT_BROWSERS_PATH: /playwright/browsers
+      POSTGRES_HOSTNAME: postgres-service
+      SETUP_DATABASES: true
+      SEVEN_REPO_PATH: /playwright/seven-internet
+      SHIP_ENGINE_SECRET_KEY_BASE: ${{ secrets.SHIP_ENGINE_SECRET_KEY_BASE }}
+      SHOPIFY_THEME_DIR: nydj-shopify-theme
+      START_DEBUGGING_WEBSERVER: true
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+      STRIPE_CONNECT_NYDJ_ACCOUNT_ID: ${{ secrets.STRIPE_CONNECT_NYDJ_ACCOUNT_ID }}
+      STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+      WEBHOOK_STATUS_TIMEOUT: 10
+
+    services:
+      postgres-service:
+        image: postgres:14.2
+        ports: ['5432:5432']
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Load repo and deps
+        uses: merchant-ly/.github/.github/actions/load-cached-elixir-repo@dev
+        id: get
+        with:
+          config: '${{ inputs.config }}'
+
+      - name: Error out when installed and expected versions differ
+        if: ${{ steps.pw-repo.outputs.version != steps.pw-repo.outputs.version }}
+        run: |
+          echo "::error ::Playwright Version Mismatch ${{ steps.pw-repo.outputs.version }} != ${{ steps.pw-container.outputs.version }}"
+          exit 1
+
+      - name: Copy repo typescript files to pre-installed playwright test path
+        run: cp acceptance_test/*.ts ${{ env.ACCEPTANCE_TEST_PATH }}
+
+      - name: Compile assets
+        run: >
+          mix cmd
+          --app checkouts_web
+          --app merchantly_web
+          --app storefront_web
+          --app shopify_web
+          mix assets.build
+
+      - name: Setup database
+        run: mix database.setup
+
+      - name: Link pre-compiled admin app
+        run: mix react_admin.link --repo-dir=${{ env.SEVEN_REPO_PATH }}
+
+      - name: Checkout theme repo
+        uses: actions/checkout@v3
+        with:
+          repository: merchant-ly/nydj-shopify-theme
+          ref: remove-script-tags
+          ssh-key: ${{ secrets.NYDJ_SHOPIFY_THEME_REPO_DEPLOY_KEY }}
+          path: nydj-shopify-theme
+
+      - name: Run elixir server in background
+        run: elixir --erl "-detached" -S mix phx.server --no-halt
+
+      - name: Get admin homepage
+        run: wget http://localhost:4000/admin
+
+      - name: Run tests
+        working-directory: ${{ env.ACCEPTANCE_TEST_PATH }}
+        run: yarn playwright test --project=chromium
+
+      - name: Upload logs and screenshots
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: explorations_logs_playwright
+          path: |
+            log
+            ${{ env.ACCEPTANCE_TEST_PATH }}/test-results

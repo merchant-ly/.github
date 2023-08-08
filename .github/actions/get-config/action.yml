@@ -1,0 +1,33 @@
+name: Get CI Config
+
+description: Composite action to splat config used by Merchantly Elixir apps in CI
+
+inputs:
+  config:
+    description: Managed JSON string of CI config
+    required: true
+outputs:
+  otp-version:
+    description: OTP version
+    value: ${{ steps.get.outputs.otp-version }}
+  elixir-version:
+    description: Elixir version
+    value: ${{ steps.get.outputs.elixir-version }}
+  node-version:
+    description: Node version
+    value: ${{ steps.get.outputs.node-version }}
+  cache-key:
+    description: Key for actions/cache
+    value: ${{ steps.get.outputs.cache-key }}
+  cache-path:
+    description: Path for actions/cache
+    value: ${{ steps.get.outputs.cache-path }}
+
+runs:
+  using: composite
+
+  steps:
+   - id: get
+     shell: bash
+     run: echo "${{inputs.config}}" | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> $GITHUB_OUTPUT
+     

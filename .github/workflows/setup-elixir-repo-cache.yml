@@ -21,70 +21,60 @@ on:
         default: true
         description: Setting false will skip building the PLT (for use of this workflow in releases)
         required: false
-      runs-on:
-        type: string
-        default: 'ubuntu-latest'
-        required: false
 
     outputs:
-      otp-version:
-        value: ${{ jobs.setup.outputs.otp-version }}
-      elixir-version:
-        value: ${{ jobs.setup.outputs.elixir-version }}
-      node-version:
-        value: ${{ jobs.setup.outputs.node-version }}
-      cache-key:
-        value: ${{ jobs.setup.outputs.cache-key }}
-      cache-path:
-        value: ${{ jobs.setup.outputs.cache-path }}
-
+      config:
+        description: Managed JSON string for CI config
+        value: ${{ jobs.setup-elixir.outputs.config }}
+      playwright-image-exists:
+        description: Okayt
+        value: ${{ jobs.setup-playwright.outputs.image-exists }}
+      playwright-image-name:
+        description: Container
+        value: ${{ jobs.setup-playwright.outputs.image-name }}
+          
+      
 env:
   ImageOS: ubuntu22
   cache-path: |
     deps
     _build
+  container: ghcr.io/merchant-ly/github-action-playwright
 
 jobs:
-  setup:
-    name: Setup
-    runs-on: ${{ inputs.runs-on }}
+  setup-elixir:
+    name: Setup Elixir
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       MIX_ENV: test
     outputs:
-      cache-path: ${{ env.cache-path }}
-      cache-key: ${{ steps.elixir-cache.outputs.key }}
-      otp-version: ${{ steps.tool-versions.outputs.erlang }}
-      elixir-version: ${{ steps.tool-versions.outputs.elixir }}
-      node-version: ${{ steps.tool-versions.outputs.nodejs }}
+      config: ${{ steps.config.outputs.config }}
 
     steps:
       - name: Checkout Github repo
         uses: actions/checkout@v3
 
-      - name: Read .tool-versions
-        uses: marocchino/tool-versions-action@608d0ecb8f01e467223f0a854ead7d3fc784b540
-        id: tool-versions
+      - name: Set Config
+        id: config
+        uses: merchant-ly/.github/.github/actions/set-config@dev
+        with:
+          version: "${{ inputs.action-cache-version }}-${{ hashFiles('mix.lock') }}"
 
       - name: Setup Elixir
         id: setup-deps
         uses: erlef/setup-beam@v1
         with:
           version-type: strict
-          elixir-version: '${{ steps.tool-versions.outputs.elixir }}'
-          otp-version: '${{ steps.tool-versions.outputs.erlang }}'
-
-      - name: Output cache key
-        id: elixir-cache
-        # Note the cache key uses the output of erlef/setup-beam@v1, not the value from .tool-versions
-        run: echo "key=${{ runner.os }}-elixir-${{ inputs.action-cache-version }}-otp-${{ steps.setup-deps.outputs.otp-version }}-elixir-${{ steps.setup-deps.outputs.elixir-version }}-${{ hashFiles('mix.lock') }}" >> $GITHUB_OUTPUT
+          elixir-version: '${{ steps.config.outputs.elixir-version }}'
+          otp-version: '${{ steps.config.outputs.otp-version }}'
 
       - name: Restore cached deps
         uses: actions/cache@v3
         id: cached-deps
         with:
-          path: ${{ env.cache-path }}
-          key: ${{ steps.elixir-cache.outputs.key }}
+          path: ${{ steps.config.outputs.cache-path }}
+          key: ${{ steps.config.outputs.cache-key }}
         # Note no restore-keys defined to avoid possible stale cache problems
 
       - name: Install deps
@@ -102,3 +92,35 @@ jobs:
         if: inputs.build-plt && steps.cached-deps.outputs.cache-hit != 'true'
         run: mix dialyzer --plt
 
+  setup-playwright:
+    name: Setup Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    env:
+      MIX_ENV: test
+    outputs:
+      image-exists: ${{ steps.playwright-version.output.image-exists }}
+      image-name: ${{ steps.playwright-version.output.image-name }}
+
+    steps:
+      - name: Checkout Github repo
+        uses: actions/checkout@v3
+
+      - name: Get Repo Version
+        uses: merchant-ly/.github/.github/actions/get-playwright-version@dev
+        id: playwright
+        with:
+          working-directory: acceptance_test
+
+      - name: Check GHCR image
+        id: playwright-version
+        run: |
+          version=${{ steps.playwright.outputs.version }}
+          image-name=`echo "${container}@v${version}"`
+
+          entries=docker inspect ${image-name}
+          image-exists=`echo "$entries" | jq 'length != 0'`
+          {
+            echo "image-exists=$image-exists"
+            echo "image-name=$image-name"
+          } >> $GITHUB_OUTPUT

@@ -1,0 +1,22 @@
+name: Get Playwright version
+      
+description: Looks at the yarn.lock in the given working directory to get expected playwright version
+
+inputs:
+  working-directory:
+    description: Directory that contains yarn.lock
+    required: true
+outputs:
+  version:
+    description: Version of @playwright/test entry in yarn.lock
+    value: ${{ steps.playwright-version.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      id: playwright-version
+      run: |
+        echo "version=$(cat yarn.lock | perl -0777 -ne '/"\@playwright\/test.*?version "(.+?)"/s && print "$1"')" >> $GITHUB_OUTPUT
+        echo "version=$version" >> $GITHUB_OUTPUT
