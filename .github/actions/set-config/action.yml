@@ -57,8 +57,11 @@ runs:
       # Note the cache key uses the output of erlef/setup-beam@v1, not the value from .tool-versions
       run: |
         echo "path=${{ toJSON(inputs.cache-path) }}" >> $GITHUB_OUTPUT
-        echo "${{ fromJSON(steps.cache.outputs.path) }}"
         echo "key=${{ runner.os }}-otp-${{ steps.versions.outputs.otp }}-elixir-${{ steps.versions.outputs.elixir }}-hash-${{ inputs.version }}" >> $GITHUB_OUTPUT
+
+    - shell: bash
+      run: |
+        echo "${{ fromJSON(steps.cache.outputs.path) }}"
         cat $GITHUB_OUTPUT
 
     - name: Build config
